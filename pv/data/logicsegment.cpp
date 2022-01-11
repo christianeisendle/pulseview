@@ -441,8 +441,11 @@ void LogicSegment::get_subsampled_edges(
 		if (fast_forward) {
 			RLESample last_sample_before_ff = rle_samples_.at(i - 1);
 			const bool sample = (last_sample_before_ff.value & sig_mask) != 0;
-			if (sample != last_sample)
+			if (sample != last_sample) {
 				edges.emplace_back(last_sample_before_ff.sample_index, sample);
+				if (first_change_only)
+					return;
+			}
 			last_sample = sample;
 		}
 		fast_forward = false;
