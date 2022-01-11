@@ -158,6 +158,11 @@ protected:
 	// Note: Make sure to update save_settings() and restore_settings() when
 	//       adding a trace-configurable variable here
 	int signal_height_;
+private:
+	vector< pair<int64_t, bool> > edges_;
+	int64_t last_start_sample_;
+	uint64_t last_end_sample_;
+	bool cache_available_;
 };
 
 } // namespace trace

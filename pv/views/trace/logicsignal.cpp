@@ -94,7 +94,8 @@ LogicSignal::LogicSignal(pv::Session &session, shared_ptr<data::SignalBase> base
 	trigger_high_(nullptr),
 	trigger_falling_(nullptr),
 	trigger_low_(nullptr),
-	trigger_change_(nullptr)
+	trigger_change_(nullptr),
+	cache_available_(false)
 {
 	GlobalSettings settings;
 	signal_height_ = settings.value(GlobalSettings::Key_View_DefaultLogicHeight).toInt();
@@ -154,8 +155,6 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 {
 	QLineF *line;
 
-	vector< pair<int64_t, bool> > edges;
-
 	assert(base_);
 	assert(owner_);
 
@@ -191,14 +190,20 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 	const uint64_t end_sample = min(max(ceil(end).convert_to<int64_t>(),
 		(int64_t)0), last_sample);
 
-	segment->get_subsampled_edges(edges, start_sample, end_sample,
-		samples_per_pixel / Oversampling, base_->logic_bit_index());
-	assert(edges.size() >= 2);
+	if (cache_available_ && (last_start_sample_ == start_sample) &&
+		(last_end_sample_ == end_sample)) {
+	} else {
+		edges_.clear();
+		segment->get_subsampled_edges(edges_, start_sample, end_sample,
+			samples_per_pixel / Oversampling, base_->logic_bit_index());
+	}
+
+	assert(edges_.size() >= 2);
 
 	const float first_sample_x =
-		pp.left() + (edges.front().first / samples_per_pixel - pixels_offset);
+		pp.left() + (edges_.front().first / samples_per_pixel - pixels_offset);
 	const float last_sample_x =
-		pp.left() + (edges.back().first / samples_per_pixel - pixels_offset);
+		pp.left() + (edges_.back().first / samples_per_pixel - pixels_offset);
 
 	// Check whether we need to paint the sampling points
 	const bool show_sampling_points = show_sampling_points_ && (samples_per_pixel < 0.25);
@@ -215,17 +220,16 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 	bool rising_edge_seen = false;
 
 	// Paint the edges
-	const unsigned int edge_count = edges.size() - 2;
+	const unsigned int edge_count = edges_.size() - 2;
 	QLineF *const edge_lines = new QLineF[edge_count];
 	line = edge_lines;
 
-	if (edges.front().second) {
+	if (edges_.front().second) {
 		// Beginning of trace is high
 		rising_edge_x = first_sample_x;
 		rising_edge_seen = true;
 	}
-
-	for (auto i = edges.cbegin() + 1; i != edges.cend() - 1; i++) {
+	for (auto i = edges_.cbegin() + 1; i != edges_.cend() - 1; i++) {
 		// Note: multiple edges occupying a single pixel are represented by an edge
 		// with undefined logic level. This means that only the first falling edge
 		// after a rising edge corresponds to said rising edge - and vice versa. If
@@ -264,7 +268,7 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 	if (show_sampling_points)
 		while ((uint64_t)sampling_point_sample <= end_sample) {
 			// Signal changed after the last edge, so the level is inverted
-			const float y = (edges.cend() - 1)->second ? high_offset : low_offset;
+			const float y = (edges_.cend() - 1)->second ? high_offset : low_offset;
 			sampling_points.emplace_back(
 				QRectF(sampling_point_x - (w / 2), y - (w / 2), w, w));
 			sampling_point_sample++;
@@ -273,7 +277,7 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 
 	if (fill_high_areas_) {
 		// Add last high rectangle if the signal is still high at the end of the trace
-		if (rising_edge_seen && (edges.cend() - 1)->second)
+		if (rising_edge_seen && (edges_.cend() - 1)->second)
 			high_rects.emplace_back(rising_edge_x, high_offset,
 				last_sample_x - rising_edge_x, signal_height_);
 
@@ -287,14 +291,14 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 	delete[] edge_lines;
 
 	// Paint the caps
-	const unsigned int max_cap_line_count = edges.size();
+	const unsigned int max_cap_line_count = edges_.size();
 	QLineF *const cap_lines = new QLineF[max_cap_line_count];
 
 	p.setPen(HighColor);
-	paint_caps(p, cap_lines, edges, true, samples_per_pixel,
+	paint_caps(p, cap_lines, edges_, true, samples_per_pixel,
 		pixels_offset, pp.left(), high_offset);
 	p.setPen(LowColor);
-	paint_caps(p, cap_lines, edges, false, samples_per_pixel,
+	paint_caps(p, cap_lines, edges_, false, samples_per_pixel,
 		pixels_offset, pp.left(), low_offset);
 
 	delete[] cap_lines;
@@ -304,6 +308,9 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 		p.setPen(SamplingPointColor);
 		p.drawRects(sampling_points.data(), sampling_points.size());
 	}
+	last_start_sample_ = start_sample;
+	last_end_sample_ = end_sample;
+	cache_available_ = true;
 }
 
 void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
