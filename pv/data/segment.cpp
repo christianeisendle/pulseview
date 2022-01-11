@@ -39,6 +39,7 @@ const uint64_t Segment::MaxChunkSize = 10 * 1024 * 1024;  /* 10MiB */
 Segment::Segment(uint32_t segment_id, uint64_t samplerate, unsigned int unit_size) :
 	segment_id_(segment_id),
 	sample_count_(0),
+	rle_sample_count_(0),
 	start_time_(0),
 	samplerate_(samplerate),
 	unit_size_(unit_size),
@@ -153,61 +154,52 @@ void Segment::append_single_sample(void *data)
 	sample_count_++;
 }
 
+template <class T>
+void Segment::copy_rle_samples(void* data, uint64_t samples)
+{
+	T *data_ptr = (T *)data;
+	uint64_t i = 0;
+	RLESample last_sample;
+
+	if (rle_sample_count_ == 0) {
+		last_sample.sample_index = 0;
+		last_sample.value = *data_ptr;
+		rle_samples_.push_back(last_sample);
+		rle_sample_count_ = 1;
+		last_sample.sample_index++;
+		data_ptr++;
+		i++;
+	} else {
+		last_sample = rle_samples_.back();
+		rle_samples_.pop_back();
+	}
+
+	for (; i < samples; i++) {
+		if (last_sample.value != *data_ptr) {
+			last_sample.value = *data_ptr;
+			rle_samples_.push_back(last_sample);
+			rle_sample_count_++;
+		}
+		last_sample.sample_index++;
+		data_ptr++;
+	}
+	rle_samples_.push_back(last_sample);
+}
+
 void Segment::append_samples(void* data, uint64_t samples)
 {
 	lock_guard<recursive_mutex> lock(mutex_);
 
-	const uint8_t* data_byte_ptr = (uint8_t*)data;
-	uint64_t remaining_samples = samples;
-	uint64_t data_offset = 0;
-
-	do {
-		uint64_t copy_count = 0;
-
-		if (remaining_samples <= unused_samples_) {
-			// All samples fit into the current chunk
-			copy_count = remaining_samples;
-		} else {
-			// Only a part of the samples fit, fill up current chunk
-			copy_count = unused_samples_;
-		}
-
-		const uint8_t* dest = &(current_chunk_[used_samples_ * unit_size_]);
-		const uint8_t* src = &(data_byte_ptr[data_offset]);
-		memcpy((void*)dest, (void*)src, (copy_count * unit_size_));
-
-		used_samples_ += copy_count;
-		unused_samples_ -= copy_count;
-		remaining_samples -= copy_count;
-		data_offset += (copy_count * unit_size_);
-
-		if (unused_samples_ == 0) {
-			try {
-				// If we're out of memory, allocating a chunk will throw
-				// std::bad_alloc. To give the application some usable memory
-				// to work with in case chunk allocation fails, we allocate
-				// extra memory and throw it away if it all succeeded.
-				// This way, memory allocation will fail early enough to let
-				// PV remain alive. Otherwise, PV will crash in a random
-				// memory-allocating part of the application.
-				current_chunk_ = new uint8_t[chunk_size_ + 7];  /* FIXME +7 is workaround for #1284 */
-
-				const int dummy_size = 2 * chunk_size_;
-				auto dummy_chunk = new uint8_t[dummy_size];
-				memset(dummy_chunk, 0xFF, dummy_size);
-				delete[] dummy_chunk;
-			} catch (bad_alloc&) {
-				delete[] current_chunk_;  // The new may have succeeded
-				current_chunk_ = nullptr;
-				throw;
-			}
-
-			data_chunks_.push_back(current_chunk_);
-			used_samples_ = 0;
-			unused_samples_ = chunk_size_ / unit_size_;
-		}
-	} while (remaining_samples > 0);
-
+	if (unit_size_ == 1)
+		copy_rle_samples<uint8_t>(data, samples);
+	else if (unit_size_ == 2)
+		copy_rle_samples<uint16_t>(data, samples);
+	else if (unit_size_ == 4)
+		copy_rle_samples<uint32_t>(data, samples);
+	else if (unit_size_ == 8)
+		copy_rle_samples<uint64_t>(data, samples);
+	else
+		copy_rle_samples<uint8_t>(data, samples*unit_size_);
 	sample_count_ += samples;
 }
 
@@ -225,6 +217,23 @@ const uint8_t* Segment::get_raw_sample(uint64_t sample_num) const
 	return chunk + chunk_offs;
 }
 
+uint64_t Segment::search_for_rle_index(uint64_t index, uint64_t search_start, uint64_t search_end) const
+{
+	uint64_t mid = (search_start + search_end) / 2;
+	if ((mid + 1) <= search_end) {
+		if (rle_samples_.at(mid).sample_index <= index) {
+			if (rle_samples_.at(mid+1).sample_index >= index)
+				return mid;
+			else
+				return search_for_rle_index(index, mid+1, search_end);
+		}
+		else
+			return search_for_rle_index(index, search_start, mid);
+	}
+	return search_end;
+}
+
+
 void Segment::get_raw_samples(uint64_t start, uint64_t count, uint8_t* dest) const
 {
 	assert(start < sample_count_);
@@ -232,26 +241,47 @@ void Segment::get_raw_samples(uint64_t start, uint64_t count, uint8_t* dest) con
 	assert(count > 0);
 	assert(dest != nullptr);
 
-	uint8_t* dest_ptr = dest;
+	uint64_t sample_index = start;
+	RLESample rle_sample;
+	RLESample next_rle_sample;
 
-	uint64_t chunk_num = (start * unit_size_) / chunk_size_;
-	uint64_t chunk_offs = (start * unit_size_) % chunk_size_;
+	assert(unit_size_ <= 8);
 
-	lock_guard<recursive_mutex> lock(mutex_);  // Because of free_unused_memory()
+	uint64_t rle_index = search_for_rle_index(start, 0, rle_sample_count_ - 1);
 
-	while (count > 0) {
-		const uint8_t* chunk = data_chunks_[chunk_num];
+	rle_sample = rle_samples_.at(rle_index);
+	if ((rle_index + 1) < rle_sample_count_)
+		next_rle_sample = rle_samples_.at(rle_index + 1);
+	else
+		next_rle_sample = rle_sample;
+	rle_index++;
+	for (uint64_t i = 0; i < count; i++) {
 
-		uint64_t copy_size = min(count * unit_size_,
-			chunk_size_ - chunk_offs);
-
-		memcpy(dest_ptr, chunk + chunk_offs, copy_size);
-
-		dest_ptr += copy_size;
-		count -= (copy_size / unit_size_);
-
-		chunk_num++;
-		chunk_offs = 0;
+		if (sample_index++ == next_rle_sample.sample_index) {
+			rle_sample = next_rle_sample;
+			if ((rle_index + 1) < rle_sample_count_) {
+				next_rle_sample = rle_samples_.at(rle_index + 1);
+			}
+			rle_index++;
+		}
+		switch (unit_size_)
+		{
+			case sizeof(uint64_t):
+				*(uint64_t*)dest = rle_sample.value;
+				break;
+			case sizeof(uint32_t):
+				*(uint32_t*)dest = (uint32_t)rle_sample.value;
+				break;
+			case sizeof(uint16_t):
+				*(uint16_t*)dest = (uint16_t)rle_sample.value;
+				break;
+			case sizeof(uint8_t):
+				*dest = (uint8_t)rle_sample.value;
+				break;
+			default:
+				memcpy(dest, &rle_sample.value, unit_size_);
+		}
+		dest += unit_size_;
 	}
 }
 

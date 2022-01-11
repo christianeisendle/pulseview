@@ -55,6 +55,10 @@ typedef struct {
 	uint8_t* chunk;
 } SegmentDataIterator;
 
+typedef struct {
+	uint64_t sample_index, value;
+} RLESample;
+
 class Segment : public QObject
 {
 	Q_OBJECT
@@ -97,13 +101,18 @@ protected:
 	void end_sample_iteration(SegmentDataIterator* it);
 	uint8_t* get_iterator_value(SegmentDataIterator* it);
 	uint64_t get_iterator_valid_length(SegmentDataIterator* it);
+	template <class T> void copy_rle_samples(void* data, uint64_t samples);
+	uint64_t search_for_rle_index(uint64_t index, uint64_t search_start, uint64_t search_end) const;
 
 	uint32_t segment_id_;
 	mutable recursive_mutex mutex_;
 	deque<uint8_t*> data_chunks_;
+	deque<RLESample> rle_samples_;
+	RLESample current_rle_sample_;
 	uint8_t* current_chunk_;
 	uint64_t used_samples_, unused_samples_;
 	atomic<uint64_t> sample_count_;
+	atomic<uint64_t> rle_sample_count_;
 	pv::util::Timestamp start_time_;
 	double samplerate_;
 	uint64_t chunk_size_;
