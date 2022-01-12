@@ -222,7 +222,7 @@ uint64_t Segment::search_for_rle_index(uint64_t index, uint64_t search_start, ui
 	uint64_t mid = (search_start + search_end) / 2;
 	if ((mid + 1) <= search_end) {
 		if (rle_samples_.at(mid).sample_index <= index) {
-			if (rle_samples_.at(mid+1).sample_index >= index)
+			if (rle_samples_.at(mid+1).sample_index > index)
 				return mid;
 			else
 				return search_for_rle_index(index, mid+1, search_end);
