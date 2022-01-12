@@ -407,10 +407,11 @@ void LogicSegment::get_subsampled_edges(
 	float min_length, int sig_index, bool first_change_only)
 {
 	RLESample rle_sample;
-	uint64_t last_captured_edge_index = ULLONG_MAX;
+	uint64_t last_captured_edge_index;
+	uint64_t ff_start_index;
 	bool last_sample;
+	bool sample;
 	bool fast_forward = false;
-	bool is_first = true;
 
 	assert(start <= end);
 	assert(min_length > 0);
@@ -428,45 +429,54 @@ void LogicSegment::get_subsampled_edges(
 
 	const uint64_t count = rle_sample_count_;
 	const uint64_t rle_start_index = start > 0 ? search_for_rle_index(start, 0, count - 1) : 0;
-	for (uint64_t i = rle_start_index; i < count; i++) {
+	
+	rle_sample = rle_samples_.at(rle_start_index);
+	sample = (rle_sample.value & sig_mask) != 0;
+	if (!first_change_only)
+		edges.emplace_back(start, sample);
+	last_sample = sample;
+	last_captured_edge_index = start;
+
+	for (uint64_t i = rle_start_index + 1; i < count; i++) {
 		rle_sample = rle_samples_.at(i);
 		if (rle_sample.sample_index > end)
 			break;
-		if ((rle_sample.sample_index - last_captured_edge_index) < block_length) {
-			const uint64_t next_index = min(end, last_captured_edge_index + block_length);
-			i = search_for_rle_index(next_index, i, count-1);
-			fast_forward = true;
-			continue;
-		}
-		if (fast_forward) {
-			RLESample last_sample_before_ff = rle_samples_.at(i - 1);
-			const bool sample = (last_sample_before_ff.value & sig_mask) != 0;
-			if (sample != last_sample) {
-				edges.emplace_back(last_sample_before_ff.sample_index, sample);
-				if (first_change_only)
-					return;
-			}
-			last_sample = sample;
-		}
-		fast_forward = false;
-		const bool sample = (rle_sample.value & sig_mask) != 0;
-		if (rle_sample.sample_index >= start) {
-			if (G_UNLIKELY(is_first)) {
-				edges.emplace_back(start, rle_sample.sample_index != start ? last_sample : sample);
-				if (rle_sample.sample_index == start)
+		sample = (rle_sample.value & sig_mask) != 0;
+
+		if ((last_sample != sample) || fast_forward) {
+			/* if the next edge would be to close to the last one, it would make no sense
+			to draw it, so just fast-forward */ 
+			if ((rle_sample.sample_index - last_captured_edge_index) < block_length) {
+				const uint64_t next_index = min(end, last_captured_edge_index + block_length);
+				ff_start_index = last_captured_edge_index;
+				i = search_for_rle_index(next_index, i, count-1);
+				rle_sample = rle_samples_.at(i);
+				sample = (rle_sample.value & sig_mask) != 0;
+
+				uint64_t search_back_index = 0;
+				do 
+				{
+					RLESample last_rle_sample_before_ff = rle_samples_.at(i - search_back_index++);
+					const bool last_sample_before_ff = (last_rle_sample_before_ff.value & sig_mask) != 0;
+					if (ff_start_index == last_rle_sample_before_ff.sample_index)
+						break;
+					if (sample != last_sample_before_ff) {
+						edges.emplace_back(last_rle_sample_before_ff.sample_index, last_sample_before_ff);
+						break;
+					}
+				} while (true);
+				if (rle_sample.sample_index > end) {
 					last_sample = sample;
-				last_captured_edge_index = start;
-				is_first = false;
+					break;
+				}
 			}
-			if (last_sample != sample) {
-				last_captured_edge_index = rle_sample.sample_index;
-				edges.emplace_back(rle_sample.sample_index, sample);
-			}
+			fast_forward = false;
+			last_captured_edge_index = rle_sample.sample_index;
+			edges.emplace_back(rle_sample.sample_index, sample);
+			last_sample = sample;
+			if (first_change_only)
+				return;
 		}
-		last_sample = sample;
-	}
-	if (is_first) {
-		edges.emplace_back(start, last_sample);
 	}
 	edges.emplace_back(end, last_sample);
 }
