@@ -66,6 +66,7 @@ Segment::~Segment()
 
 	for (uint8_t* chunk : data_chunks_)
 		delete[] chunk;
+	rle_samples_.clear();
 }
 
 uint64_t Segment::get_sample_count() const
@@ -131,27 +132,6 @@ void Segment::free_unused_memory()
 		data_chunks_.pop_back();
 		data_chunks_.push_back(resized_chunk);
 	}
-}
-
-void Segment::append_single_sample(void *data)
-{
-	lock_guard<recursive_mutex> lock(mutex_);
-
-	// There will always be space for at least one sample in
-	// the current chunk, so we do not need to test for space
-
-	memcpy(current_chunk_ + (used_samples_ * unit_size_), data, unit_size_);
-	used_samples_++;
-	unused_samples_--;
-
-	if (unused_samples_ == 0) {
-		current_chunk_ = new uint8_t[chunk_size_ + 7];  /* FIXME +7 is workaround for #1284 */
-		data_chunks_.push_back(current_chunk_);
-		used_samples_ = 0;
-		unused_samples_ = chunk_size_ / unit_size_;
-	}
-
-	sample_count_++;
 }
 
 template <class T>

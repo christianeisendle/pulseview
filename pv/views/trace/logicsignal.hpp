@@ -71,7 +71,7 @@ public:
 
 	LogicSignal(pv::Session &session, shared_ptr<data::SignalBase> base);
 
-	virtual ~LogicSignal() = default;
+	virtual ~LogicSignal();
 
 	virtual std::map<QString, QVariant> save_settings() const;
 	virtual void restore_settings(std::map<QString, QVariant> settings);

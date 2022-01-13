@@ -119,6 +119,13 @@ LogicSignal::LogicSignal(pv::Session &session, shared_ptr<data::SignalBase> base
 					trigger_match_ = match->type();
 }
 
+LogicSignal::~LogicSignal()
+{
+	if (pix_ != nullptr)
+		delete pix_;
+	edges_.clear();
+}
+
 std::map<QString, QVariant> LogicSignal::save_settings() const
 {
 	std::map<QString, QVariant> result;

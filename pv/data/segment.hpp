@@ -91,7 +91,6 @@ Q_SIGNALS:
 	void completed();
 
 protected:
-	void append_single_sample(void *data);
 	void append_samples(void *data, uint64_t samples);
 	const uint8_t* get_raw_sample(uint64_t sample_num) const;
 	void get_raw_samples(uint64_t start, uint64_t count, uint8_t *dest) const;
