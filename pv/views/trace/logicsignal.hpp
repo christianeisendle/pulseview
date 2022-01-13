@@ -162,7 +162,10 @@ private:
 	vector< pair<int64_t, bool> > edges_;
 	int64_t last_start_sample_;
 	uint64_t last_end_sample_;
+	int last_y_;
+	double last_pixel_offset_;
 	bool cache_available_;
+	QPixmap *pix_;
 };
 
 } // namespace trace

@@ -95,7 +95,8 @@ LogicSignal::LogicSignal(pv::Session &session, shared_ptr<data::SignalBase> base
 	trigger_falling_(nullptr),
 	trigger_low_(nullptr),
 	trigger_change_(nullptr),
-	cache_available_(false)
+	cache_available_(false),
+	pix_(nullptr)
 {
 	GlobalSettings settings;
 	signal_height_ = settings.value(GlobalSettings::Key_View_DefaultLogicHeight).toInt();
@@ -191,12 +192,23 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 		(int64_t)0), last_sample);
 
 	if (cache_available_ && (last_start_sample_ == start_sample) &&
-		(last_end_sample_ == end_sample)) {
-	} else {
+		(last_end_sample_ == end_sample) && 
+		(last_y_ == get_visual_y() && (last_pixel_offset_ == pixels_offset))) {
+		p.drawPixmap(0, 0, *pix_);
+		return;
+	}
+	if (!(cache_available_ && (last_start_sample_ == start_sample) &&
+		(last_end_sample_ == end_sample))) {
 		edges_.clear();
 		segment->get_subsampled_edges(edges_, start_sample, end_sample,
 			samples_per_pixel / Oversampling, base_->logic_bit_index());
 	}
+	if (pix_ != nullptr)
+		delete pix_;
+	pix_ = new QPixmap(pp.width(), pp.height());
+	pix_->fill(Qt::transparent);
+	QPainter dbp(pix_);
+	
 
 	assert(edges_.size() >= 2);
 
@@ -281,35 +293,41 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 			high_rects.emplace_back(rising_edge_x, high_offset,
 				last_sample_x - rising_edge_x, signal_height_);
 
-		p.setPen(high_fill_color_);
-		p.setBrush(high_fill_color_);
-		p.drawRects((const QRectF*)(high_rects.data()), high_rects.size());
+		dbp.setPen(high_fill_color_);
+		dbp.setBrush(high_fill_color_);
+		dbp.drawRects((const QRectF*)(high_rects.data()), high_rects.size());
 	}
 
-	p.setPen(EdgeColor);
-	p.drawLines(edge_lines, edge_count);
+
+	dbp.setPen(EdgeColor);
+	dbp.drawLines(edge_lines, edge_count);
 	delete[] edge_lines;
 
 	// Paint the caps
 	const unsigned int max_cap_line_count = edges_.size();
 	QLineF *const cap_lines = new QLineF[max_cap_line_count];
 
-	p.setPen(HighColor);
-	paint_caps(p, cap_lines, edges_, true, samples_per_pixel,
+	dbp.setPen(HighColor);
+	paint_caps(dbp, cap_lines, edges_, true, samples_per_pixel,
 		pixels_offset, pp.left(), high_offset);
-	p.setPen(LowColor);
-	paint_caps(p, cap_lines, edges_, false, samples_per_pixel,
+	dbp.setPen(LowColor);
+	paint_caps(dbp, cap_lines, edges_, false, samples_per_pixel,
 		pixels_offset, pp.left(), low_offset);
 
 	delete[] cap_lines;
 
 	// Paint the sampling points
 	if (show_sampling_points) {
-		p.setPen(SamplingPointColor);
-		p.drawRects(sampling_points.data(), sampling_points.size());
+		dbp.setPen(SamplingPointColor);
+		dbp.drawRects(sampling_points.data(), sampling_points.size());
 	}
+	dbp.end();
+
+	p.drawPixmap(0, 0, *pix_);
 	last_start_sample_ = start_sample;
 	last_end_sample_ = end_sample;
+	last_y_ = get_visual_y();
+	last_pixel_offset_ = pixels_offset;
 	cache_available_ = true;
 }
 
