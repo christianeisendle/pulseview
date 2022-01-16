@@ -53,6 +53,12 @@ class LogicSegment : public Segment, public enable_shared_from_this<Segment>
 	Q_OBJECT
 
 public:
+	enum TimeMeasureState {
+		Stopped = 0,
+		FirstSampleCaptured = 1,
+		SecondSampleCaptured = 2,
+	};
+	typedef pair<int, uint64_t> TimeMeasureSamplePair;
 	typedef pair<int64_t, bool> EdgePair;
 
 	static const unsigned int ScaleStepCount = 10;
@@ -118,6 +124,14 @@ public:
 	void get_surrounding_edges(vector<EdgePair> &dest,
 		uint64_t origin_sample, float min_length, int sig_index);
 
+	TimeMeasureState get_time_measure_state() const;
+	void set_time_measure_start_sample(TimeMeasureSamplePair sample);
+	void set_time_measure_end_sample(TimeMeasureSamplePair sample);
+	bool get_time_measure_start_sample(TimeMeasureSamplePair &sample) const;
+	bool get_time_measure_end_sample(TimeMeasureSamplePair &sample) const;
+	bool get_time_measure_result(uint64_t &sample_diff);
+	bool set_time_measure_state(TimeMeasureState state);
+
 private:
 	uint64_t unpack_sample(const uint8_t *ptr) const;
 	void pack_sample(uint8_t *ptr, uint64_t value);
@@ -144,6 +158,9 @@ private:
 	uint64_t last_append_sample_;
 	uint64_t last_append_accumulator_;
 	uint64_t last_append_extra_;
+	TimeMeasureState time_measure_state_;
+	TimeMeasureSamplePair time_measure_start_sample_;
+	TimeMeasureSamplePair time_measure_end_sample_;
 
 	friend struct LogicSegmentTest::Pow2;
 	friend struct LogicSegmentTest::Basic;

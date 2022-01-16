@@ -55,7 +55,8 @@ LogicSegment::LogicSegment(pv::data::Logic& owner, uint32_t segment_id,
 	owner_(owner),
 	last_append_sample_(0),
 	last_append_accumulator_(0),
-	last_append_extra_(0)
+	last_append_extra_(0),
+	time_measure_state_(TimeMeasureState::Stopped)
 {
 	memset(mip_map_, 0, sizeof(mip_map_));
 }
@@ -739,6 +740,65 @@ uint64_t LogicSegment::pow2_ceil(uint64_t x, unsigned int power)
 	const uint64_t p = UINT64_C(1) << power;
 	return (x + p - 1) / p * p;
 }
+
+LogicSegment::TimeMeasureState LogicSegment::get_time_measure_state() const
+{
+	return time_measure_state_;
+}
+
+
+void LogicSegment::set_time_measure_end_sample(TimeMeasureSamplePair sample)
+{
+	if ((time_measure_state_ == TimeMeasureState::FirstSampleCaptured) &&
+		(sample.second < (get_sample_count() - 1))) {
+			time_measure_state_ = TimeMeasureState::SecondSampleCaptured;
+			time_measure_end_sample_ = sample;
+	}
+}
+
+void LogicSegment::set_time_measure_start_sample(TimeMeasureSamplePair sample)
+{
+	if ((time_measure_state_ == TimeMeasureState::Stopped) &&
+		(sample.second < (get_sample_count() - 1))) {
+			time_measure_state_ = TimeMeasureState::FirstSampleCaptured;
+			time_measure_start_sample_ = sample;
+	}
+}
+
+
+bool LogicSegment::get_time_measure_result(uint64_t &sample_diff)
+{
+	if (time_measure_state_ != TimeMeasureState::SecondSampleCaptured)
+		return false;
+	sample_diff = abs((int64_t)(time_measure_end_sample_.second -
+			time_measure_start_sample_.second));
+	return true;
+}
+
+bool LogicSegment::get_time_measure_start_sample(TimeMeasureSamplePair &sample) const
+{
+	if (time_measure_state_ < TimeMeasureState::FirstSampleCaptured)
+		return false;
+	sample = time_measure_start_sample_;
+	return true;
+}
+
+bool LogicSegment::get_time_measure_end_sample(TimeMeasureSamplePair &sample) const
+{
+	if (time_measure_state_ != TimeMeasureState::SecondSampleCaptured)
+		return false;
+	sample = time_measure_end_sample_;
+	return true;
+}
+
+bool LogicSegment::set_time_measure_state(TimeMeasureState state)
+{
+	if (state == TimeMeasureState::SecondSampleCaptured)
+		return false;
+	time_measure_state_ = state;
+	return true;
+}
+
 
 } // namespace data
 } // namespace pv
