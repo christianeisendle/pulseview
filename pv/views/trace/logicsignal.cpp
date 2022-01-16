@@ -27,6 +27,7 @@
 #include <QApplication>
 #include <QFormLayout>
 #include <QToolBar>
+#include <QPainterPath>
 
 #include "logicsignal.hpp"
 #include "view.hpp"
@@ -97,7 +98,11 @@ LogicSignal::LogicSignal(pv::Session &session, shared_ptr<data::SignalBase> base
 	trigger_change_(nullptr),
 	time_diff_start_sample_(0),
 	time_diff_end_sample_(0),
+	last_click_sample_(0),
+	mouse_hover_sample_(0),
 	hover_update_(false),
+	clicked_(false),
+	time_measurement_running_(false),
 	cache_available_(false),
 	pix_(nullptr)
 {
@@ -215,6 +220,77 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 				time_diff_start_sample_ = time_diff_end_sample_;
 		}
 	}
+
+	LogicSegment::TimeMeasureSamplePair time_measure_sample;
+	bool match = true;
+	bool unmatched_click = clicked_;
+	uint64_t matched_sample;
+	QPointF measurement_point;
+
+	if (clicked_)
+		measurement_point = click_point_;
+	else
+		measurement_point = mouse_point_;
+	const uint64_t measured_sample = (uint64_t)round((measurement_point.x() +
+		pixels_offset) * samples_per_pixel);
+	if (abs(measured_sample * pixels_per_sample - time_diff_end_sample_ *
+			pixels_per_sample) < 5)
+		matched_sample = time_diff_end_sample_;
+	else if (abs(measured_sample * pixels_per_sample -
+			time_diff_start_sample_ * pixels_per_sample) < 5)
+		matched_sample = time_diff_start_sample_;
+	else
+		match = false;
+	if (!((measurement_point.y() > (get_visual_y() + high_level_offset_)) && 
+		(measurement_point.y() < (get_visual_y() + low_level_offset_)))) {
+		match = false;
+		clicked_ = false;
+	}
+	if (clicked_ && match && 
+		(segment->get_time_measure_state() == LogicSegment::TimeMeasureState::Stopped)) {
+		mouse_point_ = click_point_;
+		time_measure_sample = LogicSegment::TimeMeasureSamplePair(base_->logic_bit_index(), matched_sample);
+		segment->set_time_measure_start_sample(time_measure_sample);
+	} else if (match &&
+		(segment->get_time_measure_state() == LogicSegment::TimeMeasureState::FirstSampleCaptured)) {
+		time_measure_sample = LogicSegment::TimeMeasureSamplePair(base_->logic_bit_index(), matched_sample);
+		segment->set_time_measure_end_sample(time_measure_sample);
+	} else if (!match &&
+		segment->get_time_measure_end_sample(time_measure_sample) &&
+		(time_measure_sample.first == (int)base_->logic_bit_index())) {
+		segment->set_time_measure_state(LogicSegment::TimeMeasureState::FirstSampleCaptured);
+	} else if (unmatched_click && 
+		segment->get_time_measure_start_sample(time_measure_sample) &&
+		(time_measure_sample.first == (int)base_->logic_bit_index())) {
+		segment->set_time_measure_state(LogicSegment::TimeMeasureState::Stopped);
+		time_measurement_running_ = false;
+	}
+	clicked_ = false;
+	if (segment->get_time_measure_start_sample(time_measure_sample) &&
+		(time_measure_sample.first == (int)base_->logic_bit_index())) {
+		last_click_sample_ = time_measure_sample.second;
+		if ((mouse_point_.x() + pixels_offset) < 0)
+			mouse_hover_sample_ = 0;
+		else
+			mouse_hover_sample_ = (uint64_t)round((mouse_point_.x() +
+					pixels_offset) * samples_per_pixel);
+		if (mouse_hover_sample_ > (uint64_t)last_sample)
+			mouse_hover_sample_ = last_sample;
+		if (segment->get_time_measure_state() == 
+			LogicSegment::TimeMeasureState::SecondSampleCaptured) {
+			segment->get_time_measure_end_sample(time_measure_sample);
+			mouse_hover_sample_ = time_measure_sample.second;
+		}
+		const double mid_point_y = (int)(high_offset + fill_height / 2);
+
+		click_point_ = QPointF(last_click_sample_ *
+				pixels_per_sample -	pixels_offset, mid_point_y);
+		mouse_point_ = QPointF(mouse_hover_sample_ * pixels_per_sample -
+				pixels_offset, mouse_point_.y());
+		time_measurement_running_ = true;
+	}
+
+	
 	if (cache_available_ && (last_start_sample_ == start_sample) &&
 		(last_end_sample_ == end_sample) && 
 		(last_y_ == get_visual_y() && (last_pixel_offset_ == pixels_offset))) {
@@ -404,7 +480,8 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 		const double samples_per_pixel = samplerate * pp.scale();
 		QFontMetrics m(QApplication::font());
 
-		if (hover_update_) {
+		if (hover_update_ &&
+			segment->get_time_measure_state() == LogicSegment::TimeMeasureState::Stopped) {
 			const int y = get_visual_y();
 			const float low_offset = y + low_level_offset_;
 			const float high_offset = y + high_level_offset_;
@@ -427,8 +504,8 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 				p.setPen(Qt::black);
 				const QSize text_size(
 					m.boundingRect(QRect(), 0, time_diff_string).width(), m.height());
-				const QRectF text_rect(mid_point_x - text_size.width()/2,
-									mid_point_y - m.height(),
+				const QRectF text_rect(mouse_point_.x() + 10,
+									mouse_point_.y() + 10,
 									text_size.width(), m.height());
 				p.drawText(text_rect, Qt::AlignCenter, time_diff_string);
 				p.setPen(Qt::DotLine);
@@ -439,6 +516,30 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 				p.setPen(Qt::SolidLine);
 				draw_markers(p, markers);
 			}
+		}
+		if (time_measurement_running_) {
+			QPainterPath path;
+			const uint64_t sample_diff = abs((int64_t)(mouse_hover_sample_ - last_click_sample_));
+			const double time_diff = sample_diff / samplerate;
+			const double mid_x = (click_point_.x() + mouse_point_.x()) / 2.0f;
+			const QString time_diff_string = time_to_string(time_diff);
+			const QSize text_size(
+					m.boundingRect(QRect(), 0, time_diff_string).width(), m.height());
+			const QRectF text_rect(mouse_point_.x() + 10,
+									mouse_point_.y() + 10,
+									text_size.width(), m.height());
+			p.setPen(Qt::black);
+			p.drawText(text_rect, Qt::AlignCenter, time_diff_string);
+			
+			p.setPen(Qt::DashDotLine);
+			path.moveTo(click_point_);
+			path.cubicTo(mid_x, click_point_.y(), mid_x, mouse_point_.y(),
+						mouse_point_.x(), mouse_point_.y());
+			p.drawPath(path);
+			vector<QPointF> markers;
+			markers.push_back(click_point_);
+			markers.push_back(mouse_point_);
+			draw_markers(p, markers);
 		}
 	}
 }
@@ -453,6 +554,7 @@ void LogicSignal::hover_point_changed(const QPoint &hp)
 			hover_update_ = true;
 		} else
 			hover_update_ = false;
+	mouse_point_ = hp;
 }
 
 QString LogicSignal::time_to_string(double time) const
@@ -470,7 +572,7 @@ QString LogicSignal::time_to_string(double time) const
 		time *= 1000;
 		unit = units[++idx];
 	}
-	return QString::number(time) + QString(" ") + unit;
+	return QString::number(time, 'G', 9) + QString(" ") + unit;
 }
 
 void LogicSignal::draw_markers(QPainter &p, vector<QPointF> &marker_points) const
@@ -482,6 +584,12 @@ void LogicSignal::draw_markers(QPainter &p, vector<QPointF> &marker_points) cons
 		p.drawLine(marker_point->x()+2, marker_point->y()-2,
 					marker_point->x()-2, marker_point->y()+2);
 	}
+}
+
+void LogicSignal::mouse_left_press_event(const QMouseEvent* event)
+{
+	clicked_ = true;
+	click_point_ = QPoint(event->x(), event->y());
 }
 
 vector<LogicSegment::EdgePair> LogicSignal::get_nearest_level_changes(uint64_t sample_pos)
