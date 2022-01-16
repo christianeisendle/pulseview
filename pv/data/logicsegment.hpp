@@ -103,7 +103,7 @@ public:
 		float min_length, int sig_index, bool first_change_only = false);
 
 	void get_surrounding_edges(vector<EdgePair> &dest,
-		uint64_t origin_sample, float min_length, int sig_index);
+		uint64_t origin_sample, float min_length, int sig_index, uint64_t start_sample = 0);
 
 private:
 	uint64_t unpack_sample(const uint8_t *ptr) const;

@@ -201,9 +201,11 @@ void LogicSegment::get_subsampled_edges(
 }
 
 void LogicSegment::get_surrounding_edges(vector<EdgePair> &dest,
-	uint64_t origin_sample, float min_length, int sig_index)
+	uint64_t origin_sample, float min_length, int sig_index, uint64_t start_sample)
 {
 	if (origin_sample >= sample_count_)
+		return;
+	if (start_sample > origin_sample)
 		return;
 
 	// Put the edges vector on the heap, it can become quite big until we can
@@ -211,7 +213,7 @@ void LogicSegment::get_surrounding_edges(vector<EdgePair> &dest,
 	vector<EdgePair>* edges = new vector<EdgePair>;
 
 	// Get all edges to the left of origin_sample
-	get_subsampled_edges(*edges, 0, origin_sample, min_length, sig_index, false);
+	get_subsampled_edges(*edges, start_sample, origin_sample, min_length, sig_index, false);
 
 	// If we don't specify "first only", the first and last edge are the states
 	// at samples 0 and origin_sample. If only those exist, there are no edges
