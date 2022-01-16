@@ -124,7 +124,7 @@ protected:
 
 	static const QIcon* get_icon(const char *path);
 	static const QPixmap* get_pixmap(const char *path);
-
+	virtual void hover_point_changed(const QPoint &hp);
 	virtual void update_logic_level_offsets();
 
 protected Q_SLOTS:
@@ -133,6 +133,10 @@ protected Q_SLOTS:
 	void on_trigger();
 
 	void on_signal_height_changed(int height);
+
+private:
+	void draw_markers(QPainter &p, vector<QPointF> &marker_points) const;
+	QString time_to_string(double time) const;
 
 protected:
 	QColor high_fill_color_;
@@ -158,6 +162,18 @@ protected:
 	// Note: Make sure to update save_settings() and restore_settings() when
 	//       adding a trace-configurable variable here
 	int signal_height_;
+private:
+	vector< pair<int64_t, bool> > edges_;
+	int64_t last_start_sample_;
+	uint64_t last_end_sample_;
+	uint64_t time_diff_start_sample_;
+	uint64_t time_diff_end_sample_;
+	int last_y_;
+	QPoint hover_point_;
+	bool hover_update_;
+	double last_pixel_offset_;
+	bool cache_available_;
+	QPixmap *pix_;
 };
 
 } // namespace trace
