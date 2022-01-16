@@ -95,6 +95,9 @@ LogicSignal::LogicSignal(pv::Session &session, shared_ptr<data::SignalBase> base
 	trigger_falling_(nullptr),
 	trigger_low_(nullptr),
 	trigger_change_(nullptr),
+	time_diff_start_sample_(0),
+	time_diff_end_sample_(0),
+	hover_update_(false),
 	cache_available_(false),
 	pix_(nullptr)
 {
@@ -198,6 +201,20 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 	const uint64_t end_sample = min(max(ceil(end).convert_to<int64_t>(),
 		(int64_t)0), last_sample);
 
+	if (hover_update_) {
+		const uint64_t hover_sample = (uint64_t)floor((hover_point_.x() +
+				pixels_offset) * samples_per_pixel);
+		if (!((hover_sample >= time_diff_start_sample_) &&
+				(hover_sample <= time_diff_end_sample_))) {
+			const vector<LogicSegment::EdgePair> edges = 
+				get_nearest_level_changes(hover_sample);
+			if ((edges.size() == 2) && (edges[0].second != edges[1].second)) {
+				time_diff_start_sample_ = edges[0].first;
+				time_diff_end_sample_ = edges[1].first;
+			} else
+				time_diff_start_sample_ = time_diff_end_sample_;
+		}
+	}
 	if (cache_available_ && (last_start_sample_ == start_sample) &&
 		(last_end_sample_ == end_sample) && 
 		(last_y_ == get_visual_y() && (last_pixel_offset_ == pixels_offset))) {
@@ -376,6 +393,94 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 
 		if (show_hover_marker_)
 			paint_hover_marker(p);
+
+		shared_ptr<LogicSegment> segment = get_logic_segment_to_paint();
+		if (!segment)
+			return;
+		double samplerate = segment->samplerate();
+		// Show sample rate as 1Hz when it is unknown
+		if (samplerate == 0.0)
+			samplerate = 1.0;
+		const double samples_per_pixel = samplerate * pp.scale();
+		QFontMetrics m(QApplication::font());
+
+		if (hover_update_) {
+			const int y = get_visual_y();
+			const float low_offset = y + low_level_offset_;
+			const float high_offset = y + high_level_offset_;
+			const float fill_height = low_offset - high_offset;
+
+			if (time_diff_start_sample_ != time_diff_end_sample_) {
+				const double mid_point_x = ((time_diff_start_sample_ +
+						time_diff_end_sample_) / 2.0) /
+						samples_per_pixel - pp.pixels_offset();
+				const double mid_point_y = (int)(high_offset + fill_height / 2);
+				const double first_sample_x = time_diff_start_sample_ /
+						samples_per_pixel - pp.pixels_offset();
+				const double second_sample_x = time_diff_end_sample_ /
+						samples_per_pixel - pp.pixels_offset();
+				double time_diff = (time_diff_end_sample_ -
+						time_diff_start_sample_) / samplerate;
+				QPoint time_diff_point(mid_point_x, mid_point_y);
+
+				QString time_diff_string = time_to_string(time_diff);
+				p.setPen(Qt::black);
+				const QSize text_size(
+					m.boundingRect(QRect(), 0, time_diff_string).width(), m.height());
+				const QRectF text_rect(mid_point_x - text_size.width()/2,
+									mid_point_y - m.height(),
+									text_size.width(), m.height());
+				p.drawText(text_rect, Qt::AlignCenter, time_diff_string);
+				p.setPen(Qt::DotLine);
+				p.drawLine(first_sample_x, mid_point_y, second_sample_x, mid_point_y);
+				vector<QPointF> markers;
+				markers.push_back(QPointF(first_sample_x, mid_point_y));
+				markers.push_back(QPointF(second_sample_x, mid_point_y));
+				p.setPen(Qt::SolidLine);
+				draw_markers(p, markers);
+			}
+		}
+	}
+}
+
+void LogicSignal::hover_point_changed(const QPoint &hp)
+{
+	Signal::hover_point_changed(hp);
+
+	if ((hp.y() > (get_visual_y() + high_level_offset_)) && 
+		(hp.y() < (get_visual_y() + low_level_offset_))) {
+			hover_point_ = hp;
+			hover_update_ = true;
+		} else
+			hover_update_ = false;
+}
+
+QString LogicSignal::time_to_string(double time) const
+{
+	const vector<QString> units { 
+				QString("s"),
+				QString("ms"),
+				QString("us"),
+				QString("ns"), 
+				QString("ps")
+				};
+	int idx = 0;
+	QString unit = units[idx];
+	while ((time < 1) && (idx < (int)(units.size() - 1))) {
+		time *= 1000;
+		unit = units[++idx];
+	}
+	return QString::number(time) + QString(" ") + unit;
+}
+
+void LogicSignal::draw_markers(QPainter &p, vector<QPointF> &marker_points) const
+{
+	for (auto marker_point = marker_points.begin();
+			marker_point != marker_points.end(); marker_point++) {
+		p.drawLine(marker_point->x()-2, marker_point->y()-2,
+					marker_point->x()+2, marker_point->y()+2);
+		p.drawLine(marker_point->x()+2, marker_point->y()-2,
+					marker_point->x()-2, marker_point->y()+2);
 	}
 }
 
@@ -398,7 +503,7 @@ vector<LogicSegment::EdgePair> LogicSignal::get_nearest_level_changes(uint64_t s
 	vector<LogicSegment::EdgePair> edges;
 
 	segment->get_surrounding_edges(edges, sample_pos,
-		samples_per_pixel / Oversampling, base_->index());
+		samples_per_pixel / Oversampling, base_->index(), last_start_sample_);
 
 	if (edges.empty())
 		return vector<LogicSegment::EdgePair>();
