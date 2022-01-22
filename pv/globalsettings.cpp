@@ -121,25 +121,25 @@ void GlobalSettings::set_defaults_where_needed()
 	if (!contains(Key_General_SaveWithSetup))
 		setValue(Key_General_SaveWithSetup, true);
 
-	// Enable zoom-to-fit after acquisition by default
+	// Disable zoom-to-fit after acquisition by default
 	if (!contains(Key_View_ZoomToFitAfterAcq))
-		setValue(Key_View_ZoomToFitAfterAcq, true);
+		setValue(Key_View_ZoomToFitAfterAcq, false);
 
 	// Allow vertical dragging by default
 	if (!contains(Key_View_AllowVerticalDragging))
 		setValue(Key_View_AllowVerticalDragging, true);
 
-	// Enable colored trace backgrounds by default
+	// Disable colored trace backgrounds by default
 	if (!contains(Key_View_ColoredBG))
-		setValue(Key_View_ColoredBG, true);
+		setValue(Key_View_ColoredBG, false);
 
 	// Enable showing sampling points by default
 	if (!contains(Key_View_ShowSamplingPoints))
 		setValue(Key_View_ShowSamplingPoints, true);
 
-	// Enable filling logic signal high areas by default
+	// Disable filling logic signal high areas by default
 	if (!contains(Key_View_FillSignalHighAreas))
-		setValue(Key_View_FillSignalHighAreas, true);
+		setValue(Key_View_FillSignalHighAreas, false);
 
 	if (!contains(Key_View_DefaultDivHeight))
 		setValue(Key_View_DefaultDivHeight,
