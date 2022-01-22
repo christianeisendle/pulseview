@@ -246,26 +246,25 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 		match = false;
 		clicked_ = false;
 	}
-	if (clicked_ && match && 
+	if (unmatched_click && 
+		segment->get_time_measure_start_sample(time_measure_sample) &&
+		(time_measure_sample.first == (int)base_->logic_bit_index())) {
+		segment->set_time_measure_state(LogicSegment::TimeMeasureState::Stopped);
+		time_measurement_running_ = false;
+	} else if (clicked_ && match && 
 		(segment->get_time_measure_state() == LogicSegment::TimeMeasureState::Stopped)) {
 		mouse_point_ = click_point_;
 		time_measure_sample = LogicSegment::TimeMeasureSamplePair(base_->logic_bit_index(), matched_sample);
 		segment->set_time_measure_start_sample(time_measure_sample);
 	} else if (match &&
-		(segment->get_time_measure_state() == LogicSegment::TimeMeasureState::FirstSampleCaptured)) {
+		(segment->get_time_measure_state() >= LogicSegment::TimeMeasureState::FirstSampleCaptured)) {
 		time_measure_sample = LogicSegment::TimeMeasureSamplePair(base_->logic_bit_index(), matched_sample);
 		segment->set_time_measure_end_sample(time_measure_sample);
 	} else if (!match &&
 		segment->get_time_measure_end_sample(time_measure_sample) &&
 		(time_measure_sample.first == (int)base_->logic_bit_index())) {
 		segment->set_time_measure_state(LogicSegment::TimeMeasureState::FirstSampleCaptured);
-	} else if (unmatched_click && 
-		segment->get_time_measure_start_sample(time_measure_sample) &&
-		(time_measure_sample.first == (int)base_->logic_bit_index())) {
-		segment->set_time_measure_state(LogicSegment::TimeMeasureState::Stopped);
-		time_measurement_running_ = false;
 	}
-	clicked_ = false;
 	if (segment->get_time_measure_start_sample(time_measure_sample) &&
 		(time_measure_sample.first == (int)base_->logic_bit_index())) {
 		last_click_sample_ = time_measure_sample.second;
@@ -289,8 +288,8 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 				pixels_offset, mouse_point_.y());
 		time_measurement_running_ = true;
 	}
+	clicked_ = false;
 
-	
 	if (cache_available_ && (last_start_sample_ == start_sample) &&
 		(last_end_sample_ == end_sample) && 
 		(last_y_ == get_visual_y() && (last_pixel_offset_ == pixels_offset))) {
