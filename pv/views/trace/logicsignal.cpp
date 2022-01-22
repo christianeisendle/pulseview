@@ -70,6 +70,7 @@ const QColor LogicSignal::EdgeColor(0x80, 0x80, 0x80);
 const QColor LogicSignal::HighColor(0x00, 0xC0, 0x00);
 const QColor LogicSignal::LowColor(0xC0, 0x00, 0x00);
 const QColor LogicSignal::SamplingPointColor(0x77, 0x77, 0x77);
+const QColor LogicSignal::MarkerFillColor(0x73, 0xD2, 0x16);
 
 QColor LogicSignal::TriggerMarkerBackgroundColor = QColor(0xED, 0xD4, 0x00);
 const int LogicSignal::TriggerMarkerPadding = 2;
@@ -417,6 +418,27 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 	}
 }
 
+void LogicSignal::paint_mouse_text(QPainter &p, const QString &text, int num_lines)
+{
+	QFontMetrics m(QApplication::font());
+	const QColor current_color = p.pen().color();
+	const QSize text_size(
+					m.boundingRect(QRect(), 0, text).width(),
+					m.height() * num_lines);
+	const QRect text_rect(mouse_point_.x() + 20,
+					mouse_point_.y() + 20,
+					text_size.width(), text_size.height());
+	const QRect bg_rect = text_rect.adjusted(-3, -3, 3, 3);
+	const QRect outer_rect = bg_rect.adjusted(-1, -1, 1, 1);
+	p.fillRect(bg_rect, MarkerFillColor);
+	p.setPen(MarkerFillColor.lighter());
+	p.drawRect(bg_rect);
+	p.setPen(Qt::black);
+	p.drawRect(outer_rect);
+	p.drawText(text_rect, Qt::AlignLeft | Qt::AlignVCenter, text);
+	p.setPen(current_color);
+}
+
 void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 {
 	if (base_->enabled()) {
@@ -487,20 +509,16 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 				QPoint time_diff_point(mid_point_x, mid_point_y);
 
 				QString time_diff_string = time_to_string(time_diff);
+				QString freq_diff_string = freq_to_string(1.0 / time_diff);
 				p.setPen(Qt::black);
-				const QSize text_size(
-					m.boundingRect(QRect(), 0, time_diff_string).width(), m.height());
-				const QRectF text_rect(mouse_point_.x() + 10,
-									mouse_point_.y() + 10,
-									text_size.width(), m.height());
-				p.drawText(text_rect, Qt::AlignCenter, time_diff_string);
-				p.setPen(Qt::DotLine);
 				p.drawLine(first_sample_x, mid_point_y, second_sample_x, mid_point_y);
 				vector<QPointF> markers;
 				markers.push_back(QPointF(first_sample_x, mid_point_y));
 				markers.push_back(QPointF(second_sample_x, mid_point_y));
-				p.setPen(Qt::SolidLine);
 				draw_markers(p, markers);
+				paint_mouse_text(p, 
+					"Time: " + time_diff_string + "\n" +
+					"Freq: " + freq_diff_string, 2);
 			}
 		}
 		if (time_measurement_running_) {
@@ -509,15 +527,8 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 			const double time_diff = sample_diff / samplerate;
 			const double mid_x = (click_point_.x() + mouse_point_.x()) / 2.0f;
 			const QString time_diff_string = time_to_string(time_diff);
-			const QSize text_size(
-					m.boundingRect(QRect(), 0, time_diff_string).width(), m.height());
-			const QRectF text_rect(mouse_point_.x() + 10,
-									mouse_point_.y() + 10,
-									text_size.width(), m.height());
+			const QString freq_diff_string = freq_to_string(1.0 / time_diff);
 			p.setPen(Qt::black);
-			p.drawText(text_rect, Qt::AlignCenter, time_diff_string);
-			
-			p.setPen(Qt::DashDotLine);
 			path.moveTo(click_point_);
 			path.cubicTo(mid_x, click_point_.y(), mid_x, mouse_point_.y(),
 						mouse_point_.x(), mouse_point_.y());
@@ -526,6 +537,9 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 			markers.push_back(click_point_);
 			markers.push_back(mouse_point_);
 			draw_markers(p, markers);
+			paint_mouse_text(p, 
+				"Time: " + time_diff_string + "\n" +
+				"Freq: " + freq_diff_string, 2);
 		}
 	}
 }
@@ -559,6 +573,26 @@ QString LogicSignal::time_to_string(double time) const
 		unit = units[++idx];
 	}
 	return QString::number(time, 'G', 9) + QString(" ") + unit;
+}
+
+QString LogicSignal::freq_to_string(double freq) const
+{
+	const vector<QString> units { 
+				QString("Hz"),
+				QString("kHz"),
+				QString("MHz"),
+				QString("GHz"),
+				QString("THz")
+				};
+	int idx = 0;
+	if (freq == INFINITY)
+		return "-";
+	QString unit = units[idx];
+	while ((freq > 1000) && (idx < (int)(units.size() - 1))) {
+		freq /= 1000;
+		unit = units[++idx];
+	}
+	return QString::number(freq, 'G', 9) + QString(" ") + unit;
 }
 
 void LogicSignal::draw_markers(QPainter &p, vector<QPointF> &marker_points) const

@@ -64,6 +64,7 @@ public:
 	static const QColor HighColor;
 	static const QColor LowColor;
 	static const QColor SamplingPointColor;
+	static const QColor MarkerFillColor;
 
 	static QColor TriggerMarkerBackgroundColor;
 	static const int TriggerMarkerPadding;
@@ -138,6 +139,8 @@ protected Q_SLOTS:
 private:
 	void draw_markers(QPainter &p, vector<QPointF> &marker_points) const;
 	QString time_to_string(double time) const;
+	QString freq_to_string(double freq) const;
+	void paint_mouse_text(QPainter &p, const QString &text, int num_lines);
 
 protected:
 	QColor high_fill_color_;
