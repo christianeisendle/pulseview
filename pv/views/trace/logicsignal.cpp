@@ -232,13 +232,16 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 			edge_count_running_ = false;
 		else if ((click_point_.y() > edge_count_area_offset_start) &&
 			(click_point_.y() < edge_count_area_offset_end)) {
-				const uint64_t clicked_sample = 
-					(uint64_t)round((click_point_.x() +
-					pixels_offset) * samples_per_pixel);
+			const int64_t clicked_sample = 
+				(int64_t)round((click_point_.x() +
+				pixels_offset) * samples_per_pixel);
+			if ((clicked_sample >= 0) &&
+				(clicked_sample <= last_sample)) {
 				rising_edge_count_ = 0;
 				falling_edge_count_ = 0;
 				edge_count_running_ = true;
 				edge_count_start_sample_ = clicked_sample;
+			}
 		}
 		measurement_point = click_point_;
 	}
