@@ -110,7 +110,6 @@ LogicSignal::LogicSignal(pv::Session &session, shared_ptr<data::SignalBase> base
 {
 	GlobalSettings settings;
 	signal_height_ = settings.value(GlobalSettings::Key_View_DefaultLogicHeight).toInt();
-	edge_height_ = signal_height_ * 0.8;
 	show_sampling_points_ =
 		settings.value(GlobalSettings::Key_View_ShowSamplingPoints).toBool();
 	fill_high_areas_ =
@@ -185,7 +184,8 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 	const float low_offset = y + low_level_offset_;
 	const float high_offset = y + high_level_offset_;
 	const float fill_height = low_offset - high_offset;
-	const float edge_count_area_offset_start = y - signal_height_;
+	const float edge_count_area_offset_start =
+		y - signal_height_ - v_extents().second;
 	const float edge_count_area_offset_end = high_offset;
 
 	shared_ptr<LogicSegment> segment = get_logic_segment_to_paint();
@@ -609,7 +609,8 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 		if (edge_count_running_) {
 			const int y = get_visual_y();
 			const float high_offset = y + high_level_offset_;
-			const float edge_count_area_offset_start = y - signal_height_;
+			const float edge_count_area_offset_start =
+				y - signal_height_ - v_extents().second;
 			const float edge_count_area_offset_end = high_offset;
 			const double edge_count_start_sample_x = edge_count_start_sample_ /
 						samples_per_pixel - pp.pixels_offset();
@@ -980,6 +981,7 @@ const QPixmap* LogicSignal::get_pixmap(const char *path)
 void LogicSignal::update_logic_level_offsets()
 {
 	low_level_offset_ = 0.5f;
+	edge_height_ = signal_height_ * 0.8;
 	high_level_offset_ = low_level_offset_ - edge_height_;
 }
 
