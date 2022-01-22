@@ -749,7 +749,7 @@ LogicSegment::TimeMeasureState LogicSegment::get_time_measure_state() const
 
 void LogicSegment::set_time_measure_end_sample(TimeMeasureSamplePair sample)
 {
-	if ((time_measure_state_ == TimeMeasureState::FirstSampleCaptured) &&
+	if ((time_measure_state_ >= TimeMeasureState::FirstSampleCaptured) &&
 		(sample.second < (get_sample_count() - 1))) {
 			time_measure_state_ = TimeMeasureState::SecondSampleCaptured;
 			time_measure_end_sample_ = sample;
