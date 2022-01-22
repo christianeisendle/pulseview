@@ -444,7 +444,7 @@ void LogicSignal::paint_mid(QPainter &p, ViewItemPaintParams &pp)
 		// Add last high rectangle if the signal is still high at the end of the trace
 		if (rising_edge_seen && (edges_.cend() - 1)->second)
 			high_rects.emplace_back(rising_edge_x, high_offset,
-				last_sample_x - rising_edge_x, signal_height_);
+				last_sample_x - rising_edge_x, fill_height);
 
 		dbp.setPen(high_fill_color_);
 		dbp.setBrush(high_fill_color_);
