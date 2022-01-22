@@ -166,6 +166,7 @@ protected:
 	// Note: Make sure to update save_settings() and restore_settings() when
 	//       adding a trace-configurable variable here
 	int signal_height_;
+	int edge_height_;
 private:
 	vector< pair<int64_t, bool> > edges_;
 	int64_t last_start_sample_;
@@ -174,12 +175,16 @@ private:
 	uint64_t time_diff_end_sample_;
 	uint64_t last_click_sample_;
 	uint64_t mouse_hover_sample_;
+	uint64_t edge_count_start_sample_;
+	uint64_t rising_edge_count_;
+	uint64_t falling_edge_count_;
 	int last_y_;
 	QPoint hover_point_;
 	QPointF click_point_;
 	QPointF mouse_point_;
 	bool hover_update_;
 	bool clicked_;
+	bool edge_count_running_;
 	bool time_measurement_running_;
 	double last_pixel_offset_;
 	bool cache_available_;
