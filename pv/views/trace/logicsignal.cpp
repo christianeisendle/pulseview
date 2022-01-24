@@ -587,6 +587,7 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 			path.moveTo(click_point_);
 			path.cubicTo(mid_x, click_point_.y(), mid_x, mouse_point_.y(),
 						mouse_point_.x(), mouse_point_.y());
+			p.setBrush(Qt::transparent);
 			p.drawPath(path);
 			vector<QPointF> markers;
 			markers.push_back(click_point_);
