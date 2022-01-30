@@ -563,8 +563,10 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 						time_diff_start_sample_) / samplerate;
 				QPoint time_diff_point(mid_point_x, mid_point_y);
 
-				QString time_diff_string = time_to_string(time_diff);
-				QString freq_diff_string = freq_to_string(1.0 / time_diff);
+				const QString time_diff_string = pv::util::format_value_si(time_diff,
+					pv::util::SIPrefix::unspecified, 9, "s", false);
+				const QString freq_diff_string = pv::util::format_value_si(1 / time_diff,
+					pv::util::SIPrefix::unspecified, 9, "Hz", false);
 				p.setPen(Qt::black);
 				p.drawLine(first_sample_x, mid_point_y, second_sample_x, mid_point_y);
 				vector<QPointF> markers;
@@ -581,8 +583,10 @@ void LogicSignal::paint_fore(QPainter &p, ViewItemPaintParams &pp)
 			const uint64_t sample_diff = abs((int64_t)(mouse_hover_sample_ - last_click_sample_));
 			const double time_diff = sample_diff / samplerate;
 			const double mid_x = (click_point_.x() + mouse_point_.x()) / 2.0f;
-			const QString time_diff_string = time_to_string(time_diff);
-			const QString freq_diff_string = freq_to_string(1.0 / time_diff);
+			const QString time_diff_string = pv::util::format_value_si(time_diff,
+					pv::util::SIPrefix::unspecified, 9, "s", false);
+			const QString freq_diff_string = pv::util::format_value_si(1 / time_diff,
+					pv::util::SIPrefix::unspecified, 9, "Hz", false);
 			p.setPen(Qt::black);
 			path.moveTo(click_point_);
 			path.cubicTo(mid_x, click_point_.y(), mid_x, mouse_point_.y(),
@@ -635,44 +639,6 @@ void LogicSignal::hover_point_changed(const QPoint &hp)
 		} else
 			hover_update_ = false;
 	mouse_point_ = hp;
-}
-
-QString LogicSignal::time_to_string(double time) const
-{
-	const vector<QString> units { 
-				QString("s"),
-				QString("ms"),
-				QString("us"),
-				QString("ns"), 
-				QString("ps")
-				};
-	int idx = 0;
-	QString unit = units[idx];
-	while ((time < 1) && (idx < (int)(units.size() - 1))) {
-		time *= 1000;
-		unit = units[++idx];
-	}
-	return QString::number(time, 'G', 9) + QString(" ") + unit;
-}
-
-QString LogicSignal::freq_to_string(double freq) const
-{
-	const vector<QString> units { 
-				QString("Hz"),
-				QString("kHz"),
-				QString("MHz"),
-				QString("GHz"),
-				QString("THz")
-				};
-	int idx = 0;
-	if (freq == INFINITY)
-		return "-";
-	QString unit = units[idx];
-	while ((freq > 1000) && (idx < (int)(units.size() - 1))) {
-		freq /= 1000;
-		unit = units[++idx];
-	}
-	return QString::number(freq, 'G', 9) + QString(" ") + unit;
 }
 
 void LogicSignal::draw_markers(QPainter &p, vector<QPointF> &marker_points) const
